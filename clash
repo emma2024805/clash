@@ -1,1 +1,116 @@
-0000
+rules:
+  ###########################################################################
+  # 规则匹配顺序说明（非常重要）：
+  # 1) Clash 按顺序从上往下匹配，命中即停止。越精确、越需要强制指向的规则越靠前。
+  # 2) 专项业务（如交易所、视频站点）→ 运营商直连 → 规则集（批量域名/IP）→ 测速特例 → GEOIP → MATCH。
+  # 3) 记得：RULE-SET 所引用的规则集，需在你的 rule-providers / proxy-groups 中已配置好对应组名。
+  ###########################################################################
+
+  # === Bybit & TokenPocket 强制走日本节点 ===
+  # 需求：这两类业务流量强制出日本出口，避免风控或合规干扰；采用域名后缀/关键词多重匹配，降低漏配率。
+  - "DOMAIN-SUFFIX,bybit.com,🇯🇵 日本节点"         # Bybit 主域名，交易/行情等核心业务
+  - "DOMAIN-SUFFIX,bytick.com,🇯🇵 日本节点"        # Bybit 备用域名（官方多用来做静态或备域接入）
+  - "DOMAIN-KEYWORD,bybit,🇯🇵 日本节点"            # 关键词兜底（含子域/第三方接入），防遗漏
+  - "DOMAIN-SUFFIX,tpwallet.io,🇯🇵 日本节点"       # TokenPocket 官网/服务
+  - "DOMAIN-KEYWORD,tpwallet,🇯🇵 日本节点"         # TokenPocket 关键词兜底
+  - "DOMAIN-KEYWORD,tokenpocket,🇯🇵 日本节点"      # TokenPocket 另一关键词形式
+
+  # === YouTube 强制走美国节点 ===
+  # 需求：视频和媒体资源走美国出口，保证 CDN 命中和解锁效果；含主站、静态资源、视频流域名。
+  - "DOMAIN-SUFFIX,youtube.com,🇺🇸 美国节点"       # 主站
+  - "DOMAIN-SUFFIX,ytimg.com,🇺🇸 美国节点"         # 图片/静态资源 CDN
+  - "DOMAIN-SUFFIX,googlevideo.com,🇺🇸 美国节点"   # 视频分发域（真正的视频流多数从这里走）
+  - "DOMAIN-KEYWORD,youtube,🇺🇸 美国节点"          # 关键词兜底（App/内嵌播放器等的非常规域）
+
+  # === OKX & 交易所相关，直连 ===
+  # 需求：OKX 国内直连，避免代理导致的风控或线路绕远；如后续遇到不可直连时可再调整到代理组。
+  - 'DOMAIN-SUFFIX,okx.com,DIRECT'                # OKX 主域
+  - 'DOMAIN-SUFFIX,okx.cab,DIRECT'                # OKX 备用/促发域
+  - 'DOMAIN-KEYWORD,okx,DIRECT'                   # 关键词兜底（包括可能的子域或第三方集成）
+
+  # === T-Mobile & Helium 移动服务，直连 ===
+  # 需求：运营商/蜂窝服务类域名走直连，避免代理带来的延迟与认证异常（尤其 eSIM/VoWiFi/帐号鉴权场景）。
+  - 'DOMAIN-SUFFIX,t-mobile.com,DIRECT'
+  - 'DOMAIN-SUFFIX,3gppnetwork.org,DIRECT'
+  - 'DOMAIN-SUFFIX,pub.3gppnetwork.org,DIRECT'
+  - 'DOMAIN-SUFFIX,helium.com,DIRECT'
+  - 'DOMAIN-SUFFIX,heliummobile.com,DIRECT'
+  - 'DOMAIN-SUFFIX,api.heliummobile.com,DIRECT'
+  - 'DOMAIN-SUFFIX,auth.heliummobile.com,DIRECT'
+
+  # === 特定 IP 段直连 (T-Mobile/Helium 运营商常用) ===
+  # 需求：对明确定义的运营商网段进行直连，防止被代理影响拨号/鉴权；列表依据运营商公开网段。
+  - 'IP-CIDR,208.54.0.0/16,DIRECT'                # T-Mobile US 段（示例）
+  - 'IP-CIDR,66.94.0.0/19,DIRECT'                 # T-Mobile US 段（示例）
+  - 'IP-CIDR,206.29.176.0/22,DIRECT'              # 相关服务段（示例）
+
+  # === VPN 协议端口直连 (IKEv2 / IPSec) ===
+  # 需求：避免本机做二次代理（代理中再连 VPN）导致 MTU/握手异常；IPSec 常用 500/4500 端口直连处理。
+  - 'DST-PORT,500,DIRECT'                         # ISAKMP（IKE）端口
+  - 'DST-PORT,4500,DIRECT'                        # IPSec NAT-T 端口
+
+  # === 常用规则集 ===
+  # 说明：
+  # - 这些 RULE-SET 是“批量匹配”条目，具体条目在你的 rule-providers 中维护；
+  # - 目标策略组（如“🎯 全球直连”“Ⓜ️ 微软服务”）请确保在 proxy-groups 中存在；
+  # - 推荐把广域/无关业务放在规则集，由提供方定期更新，减少手动维护。
+  - "RULE-SET,LocalAreaNetwork,🎯 全球直连"       # 局域网（如 192.168/10.0/172.16 等）
+  - "RULE-SET,UnBan,🎯 全球直连"                  # 常见误屏蔽/国内可直连站点修正
+  - "RULE-SET,BanAD,🛑 广告拦截"                  # 通用广告域名拦截
+  - "RULE-SET,BanProgramAD,🍃 应用净化"           # 常见 App 内广告/追踪清理
+  - "RULE-SET,GoogleFCM,📢 谷歌FCM"               # 谷歌推送服务（移动端通知）
+  - "RULE-SET,GoogleCN,🎯 全球直连"               # 谷歌在国内可直连的域（如字体、镜像等）
+  - "RULE-SET,SteamCN,🎯 全球直连"                # 国区 Steam（购买/国服 CDN 等）
+  - 'RULE-SET,Bing,Ⓜ️ 微软Bing'                   # 必应搜索
+  - 'RULE-SET,OneDrive,Ⓜ️ 微软云盘'               # OneDrive
+  - 'RULE-SET,Microsoft,Ⓜ️ 微软服务'              # Microsoft 账号/Office/更新等
+  - "RULE-SET,Apple,🍎 苹果服务"                  # Apple ID/App Store/iCloud 等
+  - "RULE-SET,Telegram,📲 电报消息"               # Telegram（消息/媒体/文件）
+  - "RULE-SET,OpenAi,💬 OpenAi"                  # ChatGPT/OpenAI API
+  - "RULE-SET,NetEaseMusic,🎶 网易音乐"           # 网易云音乐（含直连/版权域）
+  - "RULE-SET,Epic,🎮 游戏平台"                   # Epic 平台/下载
+  - "RULE-SET,Origin,🎮 游戏平台"                 # EA Origin/EA App
+  - "RULE-SET,Sony,🎮 游戏平台"                   # PSN/索尼相关
+  - "RULE-SET,Steam,🎮 游戏平台"                  # Steam 全球域（对战/创意工坊/商店）
+  - "RULE-SET,Nintendo,🎮 游戏平台"               # 任天堂（eShop/在线服务）
+
+  # === 流媒体规则集 ===
+  # 说明：分流到指定策略组以适配解锁/区域需求；若你在上方已有“强制美国节点”的 YouTube 域名细分，
+  # 这里 RULE-SET,YouTube 会作为补充兜底，防止遗漏的边缘域名。
+  - "RULE-SET,YouTube,📹 油管视频"
+  - "RULE-SET,Netflix,🎥 奈飞视频"
+  - "RULE-SET,Bahamut,📺 巴哈姆特"
+  - "RULE-SET,BilibiliHMT,📺 哔哩哔哩 港澳台"
+  - "RULE-SET,Bilibili,📺 哔哩哔哩"
+  - "RULE-SET,ChinaMedia,🌏 国内媒体"
+  - "RULE-SET,ProxyMedia,🌍 国外媒体"
+
+  # === 通用 GFWList / 中国域名规则 ===
+  # 说明：
+  # - ProxyGFWlist：常见“需代理”的海外域名集合 → 指向主代理策略组“🚀 节点选择”
+  # - ChinaDomain：常见中国域名集合 → 直连
+  # - ChinaCompanyIp：国内公司/机构网段 → 直连
+  - "RULE-SET,ProxyGFWlist,🚀 节点选择"
+  - "RULE-SET,ChinaDomain,🎯 全球直连"
+  - "RULE-SET,ChinaCompanyIp,🎯 全球直连"
+
+  # === 下载直连 (防止 BT / 大流量流经代理) ===
+  # 说明：大流量（BT/直链下载）经常无需代理且会占用带宽；直连更稳、减少代理线路拥塞。
+  - "RULE-SET,Download,🎯 全球直连"
+
+  # === Speedtest / Fast.com 测速：跟随“当前选择的代理节点” ===
+  # 关键点：
+  # 1) 这里改为“🚀 节点选择”，而不是“漏网之鱼”，确保测速始终走你界面里“当前选中的节点”；
+  # 2) 放在 GEOIP,CN 之前，避免被“中国直连”规则命中导致显示国内出口；
+  # 3) 包含 Ookla/Netflix 两类常用测速域名（speedtest.net/ooklaserver.net 与 fast.com）。
+  - "DOMAIN-KEYWORD,speedtest,🚀 节点选择"        # 覆盖 App/网页/第三方 Speedtest 入口
+  - "DOMAIN-SUFFIX,speedtest.net,🚀 节点选择"      # Ookla 官方测速域名
+  - "DOMAIN-SUFFIX,fast.com,🚀 节点选择"           # Netflix 自家测速（视频线路相关）
+  - "DOMAIN-SUFFIX,ooklaserver.net,🚀 节点选择"    # Ookla 测速服务器节点域名
+
+  # === GEOIP / 最终规则 ===
+  # 说明：
+  # - GEOIP,CN：所有目的 IP 属于中国的流量直连；能最大化利用本地网络和 CDN。
+  # - MATCH：最终兜底，指向“🐟 漏网之鱼”（请在 proxy-groups 定义该策略组的行为：直连或走代理）。
+  - "GEOIP,CN,🎯 全球直连"                       # 中国目标 IP → 直连
+  - "MATCH,🐟 漏网之鱼"                           # 未被前面规则命中的所有流量 → 兜底策略
